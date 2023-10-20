@@ -7,7 +7,7 @@ app = Flask(__name__)
 def connect_to_database(db_name):
     return sqlite3.connect(db_name)
 
-@app.route('/get_total_fee', methods=['GET'])
+@app.route('/get_fees', methods=['GET'])
 def get_total_fee():
     # 요청에서 db_name과 table_name을 얻습니다.
     db_name = request.args.get('db_name')

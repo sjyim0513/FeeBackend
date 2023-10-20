@@ -1,6 +1,5 @@
 import sqlite3
 from web3 import Web3
-import redis
 from dotenv import load_dotenv
 import os
 
@@ -16,7 +15,6 @@ pair_abi = [
     {
         "anonymous": False,
         "inputs": [
-            {"indexed": True, "internalType": "address", "name": "sender", "type": "address"},
             {"indexed": False, "internalType": "uint256", "name": "amount0", "type": "uint256"},
             {"indexed": False, "internalType": "uint256", "name": "amount1", "type": "uint256"}
         ],
@@ -47,7 +45,6 @@ activePeriodEnd = int(activePeriod) + WEEK
 print(f"activePeriod : {activePeriod}")
 print(f"activePeriodEnd : {activePeriodEnd}")
 
-# SQLite 데이터베이스에 연결
 conn = sqlite3.connect('contract_data.db')
 cursor = conn.cursor()
 
@@ -59,7 +56,6 @@ def handle_epoch():
 
     print(f"New database created: {new_db_name}")
 
-    # 기존 연결을 닫고 새로운 연결을 할당
     cursor.close()
     conn.close()
     cursor = new_cursor
@@ -70,7 +66,6 @@ def handle_event(event):
     amount0 = event['args']['amount0']
     amount1 = event['args']['amount1']
 
-    # 테이블이 없으면 새로운 테이블 생성
     cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS {sender} (
             id INTEGER PRIMARY KEY,
@@ -83,13 +78,11 @@ def handle_event(event):
     ''')
     conn.commit()
 
-    # 데이터베이스에 저장
     cursor.execute(f"INSERT INTO {sender} (sender, amount0, amount1) VALUES (?, ?, ?)", (sender, amount0, amount1))
     conn.commit()
 
     print(f"Received and saved data: sender={sender}, amount0={amount0}, amount1={amount1}")
 
-    # totalfee0 및 totalfee1 가져오기
     cursor.execute(f"SELECT totalFee0, totalFee1 FROM {sender} WHERE sender = ?", (sender,))
     result = cursor.fetchone()
 
@@ -110,16 +103,19 @@ def handle_event(event):
 
 contract = Scrollw3.eth.contract(address=pairFactory_address, abi=pair_abi)
 event_filter = contract.events.Fees.createFilter(fromBlock="latest")
+event_filter.watch(handle_event)
 
-while True:
-    current_block_number = Scrollw3.eth.block_number
-    print(f"current block: {current_block_number}")
+try:
+    while True:
+        current_block_number = Scrollw3.eth.block_number
+        print(f"current block: {current_block_number}")
 
-    if current_block_number >= activePeriodEnd:
-        handle_epoch()
-        activePeriod = minterContract.functions.active_period().call()
-        activePeriodEnd = int(activePeriod) + WEEK
-        print(f"activePeriodEnd updated: {activePeriodEnd}")
-
-    for event in event_filter.get_new_entries():
-        handle_event(event)
+        if current_block_number >= activePeriodEnd:
+            handle_epoch()
+            activePeriod = minterContract.functions.active_period().call()
+            activePeriodEnd = int(activePeriod) + WEEK
+            print(f"activePeriodEnd updated: {activePeriodEnd}")
+            
+except KeyboardInterrupt:
+    event_filter.stop_watching()
+    
